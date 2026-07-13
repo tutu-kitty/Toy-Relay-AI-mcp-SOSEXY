@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5e8ff" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Toy Relay · 玩具控制台</title>
+  <style>
+    /* ========== 基础调色板 (Vision Pro / iOS Glass) ========== */
+    :root {
+      /* 背景色调 */
+      --bg-pink:    #ffd9ec;
+      --bg-lavender:#d9c8ff;
+      --bg-blue:    #c8e0ff;
+      --bg-mint:    #c8f5e0;
+
+      /* 强调色 (半饱和, 不要太艳) */
+      --accent-violet: #b89ce0;
+      --accent-pink:   #e0a0c8;
+      --accent-blue:   #98c0e8;
+      --accent-success:#88c898;
+      --accent-warn:   #e8c878;
+      --accent-danger: #e89090;
+
+      /* 文字 */
+      --text:        #3a3344;
+      --text-soft:   #6e6478;
+      --text-muted:  #a098b0;
+
+      /* ===== 玻璃材质核心 token ===== */
+      /* 主玻璃色 (极淡, 让背景透过) */
+      --glass-tint:        rgba(255, 255, 255, 0.06);
+      /* 主玻璃背景 = 折射渐变 + tint */
+      --glass-bg:
+        linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.14) 0%,
+          rgba(255, 255, 255, 0.04) 35%,
+          rgba(255, 255, 255, 0.02) 60%,
+          rgba(255, 255, 255, 0.10) 100%
+        ),
+        var(--glass-tint);
+
+      /* 高光描边 (1px 渐变, 用 mask 画在边缘) */
+      --glass-edge:
+        linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.65) 0%,
+          rgba(255, 255, 255, 0.15) 25%,
+          rgba(255, 255, 255, 0.05) 50%,
+          rgba(255, 255, 255, 0.20) 75%,
+          rgba(255, 255, 255, 0.50) 100%
+        );
+
+      /* 阴影 = 远投 + 近接触 + 顶部 inset 高光 + 底部 inset 反光 */
+      --glass-shadow:
+        0 30px 60px -20px rgba(70, 50, 90, 0.22),
+        0 12px 24px -10px rgba(70, 50, 90, 0.18),
+        inset 0 1px 1px rgba(255, 255, 255, 0.55),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.08);
+
+      /* 主 backdrop 滤镜 */
+      --glass-filter: blur(40px) saturate(180%) brightness(110%);
+
+      /* 玻璃外发光 (微弱) */
+      --glass-glow: drop-shadow(0 0 1px rgba(255, 255, 255, 0.25));
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    /* ========== 背景: 樱花图 + 3 个柔焦光斑 ========== */
+    body {
+      background:
+        linear-gradient(180deg, rgba(255, 220, 235, 0.25) 0%, rgba(220, 200, 245, 0.35) 100%),
+        url('/relay/bg/bg.jpg') center/cover no-repeat fixed;
+      background-attachment: fixed;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    body::before, body::after, .bg-blob-3 {
+      content: "";
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    body::before {
+      width: 560px; height: 560px;
+      background: radial-gradient(circle, rgba(255, 180, 210, 0.7) 0%, transparent 65%);
+      top: -140px; left: -160px;
+      opacity: 0.7;
+    }
+
+    body::after {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(180, 200, 255, 0.6) 0%, transparent 65%);
+      bottom: -180px; right: -140px;
+      opacity: 0.65;
+    }
+
+    .bg-blob-3 {
+      width: 380px; height: 380px;
+      background: radial-gradient(circle, rgba(220, 190, 255, 0.55) 0%, transparent 65%);
+      top: 40%; left: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0.5;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 20px 16px 60px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ========== 标题 ========== */
+    header {
+      text-align: center;
+      padding: 32px 0 22px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-soft);
+      margin: 0;
+    }
+
+    /* ========== 主玻璃卡片 (Vision Pro 风格) ========== */
+    .glass {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-filter);
+      -webkit-backdrop-filter: var(--glass-filter);
+      border-radius: 24px;
+      border: 1px solid transparent;             /* 真正的边描在 ::before */
+      box-shadow: var(--glass-shadow);
+      padding: 20px;
+      margin-bottom: 18px;
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    /* 边缘高光描边 (1px 渐变白线, mask 技巧只画 1px) */
+    .glass::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: 1px;
+      background: var(--glass-edge);
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* 顶部镜面反射弧 (specular highlight) */
+    .glass::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 55%;
+      background:
+        radial-gradient(
+          ellipse 130% 90% at 50% -15%,
+          rgba(255, 255, 255, 0.22) 0%,
+          rgba(255, 255, 255, 0.06) 35%,
+          transparent 65%
+        );
+      pointer-events: none;
+      border-radius: 24px 24px 50% 50% / 24px 24px 30% 30%;
+      z-index: 1;
+    }
+
+    /* 卡片内容层级 */
+    .glass > * { position: relative; z-index: 3; }
+
+    .glass h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-soft);
+      margin: 0 0 14px;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .glass h2::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 14px;
+      background: linear-gradient(180deg, var(--accent-violet), var(--accent-pink));
+      border-radius: 2px;
+      box-shadow: 0 0 6px rgba(220, 190, 230, 0.5);
+    }
+
+    /* ========== 表单: 凹进去的玻璃 ========== */
+    label {
+      font-size: 12px;
+      color: var(--text-soft);
+      display: block;
+      margin-bottom: 6px;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+
+    label:first-child { margin-top: 0; }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.08) 0%,
+          rgba(255, 255, 255, 0.04) 100%
+        );
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      outline: none;
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+      /* 凹进去: 顶部暗, 底部亮 (像被压进玻璃里) */
+      box-shadow:
+        inset 0 1px 2px rgba(40, 30, 60, 0.10),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.25);
+    }
+
+    input:hover, select:hover {
+      border-color: rgba(255, 255, 255, 0.35);
+    }
+
+    input:focus, select:focus {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.20) 0%,
+          rgba(255, 255, 255, 0.10) 100%
+        );
+      border-color: rgba(220, 190, 230, 0.6);
+      box-shadow:
+        inset 0 1px 2px rgba(40, 30, 60, 0.08),
+        0 0 0 3px rgba(220, 190, 230, 0.18),
+        0 0 12px rgba(220, 190, 230, 0.25);
+    }
+
+    input::placeholder { color: var(--text-muted); }
+
+    /* ========== 按钮: 全玻璃 ========== */
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 10px;
+    }
+    .row:first-child { margin-top: 0; }
+    .row > * { flex: 1; min-width: 0; }
+
+    /* 主按钮: 玻璃包住渐变 */
+    button {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.30) 0%,
+          rgba(255, 255, 255, 0.10) 45%,
+          transparent 100%
+        ),
+        linear-gradient(135deg, var(--accent-violet) 0%, var(--accent-pink) 100%);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+      min-height: 44px;
+      letter-spacing: 0.3px;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 6px 16px -4px rgba(180, 140, 200, 0.40),
+        0 2px 4px -1px rgba(180, 140, 200, 0.25),
+        inset 0 1px 1px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      text-shadow: 0 1px 1px rgba(80, 50, 100, 0.25);
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      filter: brightness(1.08);
+      box-shadow:
+        0 10px 24px -6px rgba(180, 140, 200, 0.50),
+        0 4px 8px -2px rgba(180, 140, 200, 0.30),
+        inset 0 1px 1px rgba(255, 255, 255, 0.6),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.15);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0.5px);
+      box-shadow:
+        0 3px 8px -2px rgba(180, 140, 200, 0.35),
+        inset 0 1px 3px rgba(80, 50, 100, 0.2),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.15);
+      filter: brightness(0.97);
+    }
+
+    button:disabled {
+      background: linear-gradient(135deg, rgba(180, 170, 195, 0.25) 0%, rgba(200, 190, 210, 0.25) 100%);
+      color: rgba(80, 70, 95, 0.55);
+      cursor: not-allowed;
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+      text-shadow: none;
+    }
+
+    /* 副按钮: 纯玻璃 */
+    button.glass-btn {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.22) 0%,
+          rgba(255, 255, 255, 0.08) 50%,
+          rgba(255, 255, 255, 0.04) 100%
+        ),
+        rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
+      box-shadow:
+        0 4px 12px -4px rgba(120, 90, 140, 0.18),
+        inset 0 1px 1px rgba(255, 255, 255, 0.55),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+    }
+
+    button.glass-btn:hover:not(:disabled) {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.35) 0%,
+          rgba(255, 255, 255, 0.12) 100%
+        ),
+        rgba(255, 255, 255, 0.12);
+      box-shadow:
+        0 6px 16px -4px rgba(120, 90, 140, 0.25),
+        inset 0 1px 1px rgba(255, 255, 255, 0.7),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.12);
+    }
+
+    /* 颜色变体 (用在主按钮 .danger / .ok 上覆盖渐变) */
+    button.danger {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.30) 0%,
+          rgba(255, 255, 255, 0.10) 45%,
+          transparent 100%
+        ),
+        linear-gradient(135deg, var(--accent-danger) 0%, var(--accent-pink) 100%);
+      box-shadow:
+        0 6px 16px -4px rgba(220, 130, 140, 0.40),
+        0 2px 4px -1px rgba(220, 130, 140, 0.25),
+        inset 0 1px 1px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.1);
+    }
+
+    button.ok {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.30) 0%,
+          rgba(255, 255, 255, 0.10) 45%,
+          transparent 100%
+        ),
+        linear-gradient(135deg, var(--accent-success) 0%, var(--accent-blue) 100%);
+      box-shadow:
+        0 6px 16px -4px rgba(120, 180, 140, 0.40),
+        0 2px 4px -1px rgba(120, 180, 140, 0.25),
+        inset 0 1px 1px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.1);
+    }
+
+    /* ========== 状态框: 深刻进去 (像刻在玻璃上) ========== */
+    .status-box {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 11.5px;
+      padding: 12px 14px;
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.04) 0%,
+          rgba(255, 255, 255, 0.10) 100%
+        );
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(30px) saturate(150%);
+      -webkit-backdrop-filter: blur(30px) saturate(150%);
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--text);
+      line-height: 1.55;
+      box-shadow:
+        inset 0 2px 4px rgba(40, 30, 60, 0.12),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.18);
+    }
+
+    .status-box::-webkit-scrollbar { width: 6px; }
+    .status-box::-webkit-scrollbar-track { background: transparent; }
+    .status-box::-webkit-scrollbar-thumb {
+      background: rgba(180, 140, 200, 0.3);
+      border-radius: 3px;
+    }
+
+    /* ========== 状态点 / 标签: 小浮玻璃 ========== */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.30) 0%,
+          rgba(255, 255, 255, 0.08) 100%
+        ),
+        rgba(180, 140, 200, 0.15);
+      color: var(--text-soft);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow:
+        0 2px 6px -2px rgba(120, 90, 140, 0.15),
+        inset 0 1px 1px rgba(255, 255, 255, 0.5);
+    }
+
+    .pill::before {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.7;
+      box-shadow: 0 0 4px currentColor;
+    }
+
+    .pill.mock { background: rgba(232, 200, 120, 0.18); color: #a07a30; }
+    .pill.real { background: rgba(184, 156, 224, 0.22); color: #6a4a98; }
+    .pill.connected { background: rgba(136, 200, 152, 0.22); color: #4a7a5a; }
+    .pill.stopped { background: rgba(180, 170, 195, 0.18); color: var(--text-muted); }
+
+    .ble-status {
+      font-size: 12px;
+      color: var(--text-soft);
+      margin-top: 8px;
+    }
+
+    /* ========== 预设按钮: 大块玻璃卡片 ========== */
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .preset-card {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.22) 0%,
+          rgba(255, 255, 255, 0.06) 50%,
+          rgba(255, 255, 255, 0.03) 100%
+        ),
+        rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(30px) saturate(170%);
+      -webkit-backdrop-filter: blur(30px) saturate(170%);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 16px;
+      padding: 14px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 4px 14px -4px rgba(140, 110, 170, 0.18),
+        inset 0 1px 1px rgba(255, 255, 255, 0.55),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .preset-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 50%;
+      background: radial-gradient(
+        ellipse 120% 100% at 50% -20%,
+        rgba(255, 255, 255, 0.25) 0%,
+        transparent 70%
+      );
+      pointer-events: none;
+    }
+
+    .preset-card:not(:disabled):hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.5);
+      box-shadow:
+        0 10px 24px -6px rgba(140, 110, 170, 0.30),
+        inset 0 1px 1px rgba(255, 255, 255, 0.7),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.12);
+    }
+
+    .preset-card:not(:disabled):active {
+      transform: translateY(0);
+      box-shadow:
+        inset 0 2px 4px rgba(100, 70, 130, 0.15),
+        inset 0 1px 1px rgba(255, 255, 255, 0.4);
+    }
+
+    .preset-card:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .preset-card > * { position: relative; z-index: 1; }
+
+    .preset-card .emoji {
+      font-size: 22px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .preset-stop {
+      grid-column: 1 / -1;
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.22) 0%,
+          rgba(255, 255, 255, 0.06) 50%,
+          rgba(255, 255, 255, 0.03) 100%
+        ),
+        rgba(255, 255, 255, 0.06);
+    }
+
+    /* ========== 小提示 ========== */
+    .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    code {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.30) 0%,
+          rgba(255, 255, 255, 0.12) 100%
+        ),
+        rgba(220, 190, 230, 0.15);
+      padding: 1px 6px;
+      border-radius: 5px;
+      font-size: 11.5px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      color: var(--accent-violet);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.4),
+        0 1px 2px rgba(120, 90, 140, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-blob-3"></div>
+  <div class="container">
+    <header>
+      <h1>🌸 Toy Relay <span id="mode-pill" class="pill stopped">未连接</span></h1>
+      <p class="subtitle">玩具控制台 · 通过 Tailscale 安全直连</p>
+    </header>
+
+    <!-- 1. 配置 -->
+    <div class="glass">
+      <h2>连接配置</h2>
+      <label>VPS URL <span style="opacity:.6">(Tailscale HTTPS)</span></label>
+      <input type="text" id="vps-url" placeholder="https://your-vps.ts.net" />
+
+      <label>API Key <span style="opacity:.6">(VPS state/api_key.txt)</span></label>
+      <input type="text" id="api-key" placeholder="xxx..." />
+
+      <div class="row" style="margin-top: 14px;">
+        <div>
+          <label>轮询心跳 (s)</label>
+          <input type="number" id="poll-ms" value="5" min="1" max="60" />
+        </div>
+        <div>
+          <label>模式</label>
+          <select id="mode-select">
+            <option value="mock">Mock (模拟)</option>
+            <option value="real">Real (真实 BLE)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="ok" id="btn-start">▶ 启动中继</button>
+        <button class="danger glass-btn" id="btn-stop" disabled>⏹ 停止</button>
+      </div>
+    </div>
+
+    <!-- 2. BLE -->
+    <div class="glass">
+      <h2>BLE 连接 (Real 模式)</h2>
+      <div class="row">
+        <div>
+          <label>设备广播名</label>
+          <input type="text" id="device-name" value="SOSEXY" />
+        </div>
+        <div>
+          <label>Service UUID</label>
+          <input type="text" id="service-uuid" value="0000ee01-0000-1000-8000-00805f9b34fb" placeholder="留空自动探测" />
+        </div>
+      </div>
+      <label>Write Characteristic UUID</label>
+      <input type="text" id="write-uuid" value="0000ee03-0000-1000-8000-00805f9b34fb" />
+
+      <div class="row" style="margin-top: 14px;">
+        <button class="glass-btn" id="btn-connect" disabled>🔗 连接 BLE</button>
+        <button class="glass-btn" id="btn-disconnect" disabled>断开</button>
+      </div>
+      <div class="ble-status" id="ble-status">未连接</div>
+    </div>
+
+    <!-- 3. 预设 -->
+    <div class="glass">
+      <h2>预设模式</h2>
+      <div class="preset-grid">
+        <button class="preset-card" id="btn-preset-gentle" disabled>
+          <span class="emoji">🍃</span>轻柔
+        </button>
+        <button class="preset-card" id="btn-preset-medium" disabled>
+          <span class="emoji">🌊</span>中等
+        </button>
+        <button class="preset-card" id="btn-preset-wild" disabled>
+          <span class="emoji">🔥</span>狂野
+        </button>
+        <button class="preset-card preset-stop" id="btn-preset-stop" disabled>
+          ⏹ 全部停止
+        </button>
+      </div>
+      <div class="hint" id="preset-hint">需连接 BLE 后启用</div>
+    </div>
+
+    <!-- 4. 状态 -->
+    <div class="glass">
+      <h2>实时状态</h2>
+      <div class="status-box" id="status-box">等待启动...</div>
+    </div>
+
+    <!-- 5. 日志 -->
+    <div class="glass">
+      <h2>命令日志</h2>
+      <div class="status-box" id="log-box"></div>
+    </div>
+
+    <p class="hint" style="text-align:center; margin-top: 24px;">
+      Toy Relay · Lumen · MIT
+    </p>
+  </div>
+
+  <script>
+    // ===== 工具 =====
+    const $ = id => document.getElementById(id);
+    const log = (msg) => {
+      const ts = new Date().toLocaleTimeString();
+      $("log-box").textContent = `[${ts}] ${msg}\n` + $("log-box").textContent;
+    };
+    const setStatus = (msg) => $("status-box").textContent = msg;
+
+    // ===== SOSEXY 协议 =====
+    const MOTOR_MAP = {
+      suction:   [0x07, 0x08],
+      vibration: [0x01, 0x02],
+      electric:  [0x03, 0x04],
+    };
+
+    const COMMON_SERVICE_UUIDS = [
+      '0000ee01-0000-1000-8000-00805f9b34fb',
+      '0000ee00-0000-1000-8000-00805f9b34fb',
+      '0000eee0-0000-1000-8000-00805f9b34fb',
+      '0000fef0-0000-1000-8000-00805f9b34fb',
+      '0000fff0-0000-1000-8000-00805f9b34fb',
+      '0000ffe0-0000-1000-8000-00805f9b34fb',
+      '0000fde0-0000-1000-8000-00805f9b34fb',
+      '0000aa00-0000-1000-8000-00805f9b34fb',
+      '0000ab00-0000-1000-8000-00805f9b34fb',
+    ];
+
+    function buildFrame(motor, intensity) {
+      const [m1, m2] = MOTOR_MAP[motor];
+      return new Uint8Array([
+        0x01, 0x01, 0x00, 0x02, 0x00,
+        m1, 0x11, intensity & 0xFF, 0x00, m2, 0x11, 0x01
+      ]);
+    }
+
+    // ===== BLE =====
+    let bleDevice = null;
+    let writeChar = null;
+
+    async function connectBLE() {
+      const name = $("device-name").value.trim();
+      const svcInput = $("service-uuid").value.trim();
+      const wuuid = $("write-uuid").value.trim();
+      if (!name) { log("❌ 请填设备名"); return; }
+
+      const userOptional = svcInput
+        ? svcInput.split(/[,,;\n\s]+/).map(s => s.trim()).filter(Boolean)
+        : [];
+      const allOptional = [...new Set([...userOptional, ...COMMON_SERVICE_UUIDS])];
+      log(`🔍 扫描 ${name}... (候选 ${allOptional.length} 个 service)`);
+
+      try {
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ name }],
+          optionalServices: allOptional,
+        });
+        log(`📡 找到 ${bleDevice.name}, 连接中...`);
+        const server = await bleDevice.gatt.connect();
+
+        let services = [];
+        for (const s of allOptional) {
+          try {
+            const svc = await server.getPrimaryService(s);
+            services.push(svc);
+          } catch (e) {}
+        }
+
+        log(`🔍 发现 ${services.length} 个 services`);
+        for (const s of services) {
+          log(`  Service: ${s.uuid}`);
+          try {
+            const chars = await s.getCharacteristics();
+            for (const ch of chars) {
+              const props = ch.properties || {};
+              const propsList = Object.keys(props).filter(k => props[k]);
+              const tag = (props.write || props.writeWithoutResponse) ? " ← WRITE" : "";
+              log(`    Char ${ch.uuid} (${propsList.join(', ')})${tag}`);
+              if (!writeChar && (props.write || props.writeWithoutResponse)) {
+                if (wuuid && !ch.uuid.startsWith(wuuid.slice(0, 8))) continue;
+                writeChar = ch;
+                log(`    ✅ 选中`);
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (!writeChar) throw new Error("没找到可写 characteristic");
+        $("ble-status").innerHTML = '<span class="pill connected">已连接</span> ' + (bleDevice.name || "");
+        log("✅ BLE 已连接");
+        $("btn-disconnect").disabled = false;
+        $("btn-connect").disabled = true;
+        updatePresetButtons();
+      } catch (e) {
+        log(`❌ 连接失败: ${e.message}`);
+        $("ble-status").innerHTML = '<span class="pill" style="background:rgba(245,152,152,0.25);color:#a85050">失败</span>';
+      }
+    }
+
+    function disconnectBLE() {
+      if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+      bleDevice = null;
+      writeChar = null;
+      $("ble-status").innerHTML = '<span class="pill stopped">未连接</span>';
+      $("btn-disconnect").disabled = true;
+      $("btn-connect").disabled = $("mode-select").value === "real";
+      log("🔌 BLE 已断开");
+      updatePresetButtons();
+    }
+
+    async function sendBLE(motor, intensity) {
+      const frame = buildFrame(motor, intensity);
+      const hex = Array.from(frame).map(b => b.toString(16).padStart(2, "0")).join(" ");
+      log(`📡 BLE → ${hex}`);
+      if (writeChar.properties && writeChar.properties.write) {
+        await writeChar.writeValueWithResponse(frame);
+      } else {
+        await writeChar.writeValueWithoutResponse(frame);
+      }
+    }
+
+    async function stopAllBLE() {
+      for (const motor of Object.keys(MOTOR_MAP)) {
+        await sendBLE(motor, 0);
+      }
+    }
+
+    // ===== 预设模式 =====
+    const PRESETS = {
+      gentle: { suction: 20, vibration: 15, electric: 0 },
+      medium: { suction: 50, vibration: 40, electric: 10 },
+      wild:   { suction: 80, vibration: 70, electric: 30 },
+    };
+
+    function updatePresetButtons() {
+      const enabled = !!writeChar && $("mode-select").value === "real";
+      ["btn-preset-gentle", "btn-preset-medium", "btn-preset-wild", "btn-preset-stop"]
+        .forEach(id => $(id).disabled = !enabled);
+      $("preset-hint").textContent = enabled
+        ? "✅ BLE 已连接, 可用预设"
+        : (writeChar ? "切换到 Real 模式" : "需先连接 BLE");
+    }
+
+    async function runPreset(name) {
+      const p = PRESETS[name];
+      if (!p) return;
+      log(`🎯 预设: ${name}`);
+      for (const [motor, intensity] of Object.entries(p)) {
+        if (intensity > 0 && writeChar) {
+          try { await sendBLE(motor, intensity); }
+          catch (e) { log(`❌ ${motor} 失败: ${e.message}`); }
+        }
+      }
+    }
+
+    async function presetStop() {
+      log(`🎯 预设: 全部停止`);
+      await stopAllBLE();
+    }
+
+    // ===== SSE + 轮询 =====
+    let pollTimer = null;
+    let lastUpdatedAt = 0;
+    let lastStopTs = 0;
+    let running = false;
+    let eventSource = null;
+
+    async function handleState(state) {
+      setStatus(JSON.stringify(state, null, 2));
+      const mode = $("mode-select").value;
+
+      // STOP 最高优先级
+      if (state.cmd === "stop" && state.updated_at > lastStopTs) {
+        lastStopTs = state.updated_at;
+        const label = mode === "mock" ? "📝 [MOCK] 停止" : "📡 [REAL] 停止";
+        log(label);
+        if (mode === "real" && writeChar) {
+          try { await stopAllBLE(); }
+          catch (e) { log(`❌ 蓝牙写入失败: ${e.message}`); }
+        }
+        lastUpdatedAt = state.updated_at;
+        return;
+      }
+
+      // SET
+      if (state.updated_at > lastUpdatedAt && state.cmd === "set") {
+        lastUpdatedAt = state.updated_at;
+        const motor = state.motor;
+        const intensity = state.intensity;
+        if (motor && intensity !== undefined) {
+          const label = mode === "mock" ? "📝 [MOCK]" : "📡 [REAL]";
+          log(`${label} motor=${motor} intensity=${intensity}`);
+          if (mode === "real" && writeChar) {
+            try { await sendBLE(motor, intensity); }
+            catch (e) { log(`❌ 蓝牙写入失败: ${e.message}`); }
+          }
+        }
+      }
+    }
+
+    async function pollOnce() {
+      const base = $("vps-url").value.trim().replace(/\/$/, "").replace(/\/state$/, "");
+      const apiKey = $("api-key").value.trim();
+      const headers = { "Cache-Control": "no-store" };
+      if (apiKey) headers["X-API-Key"] = apiKey;
+      try {
+        const res = await fetch(base + "/state", { cache: "no-store", headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const state = await res.json();
+        await handleState(state);
+      } catch (e) {
+        log(`❌ 拉取失败: ${e.message}`);
+      }
+    }
+
+    function startSSE() {
+      const base = $("vps-url").value.trim().replace(/\/$/, "").replace(/\/state$/, "");
+      const url = base + "/stream";
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      try {
+        eventSource = new EventSource(url);
+        eventSource.onmessage = async (ev) => {
+          try { await handleState(JSON.parse(ev.data)); }
+          catch (e) { log(`❌ SSE 解析失败: ${e.message}`); }
+        };
+        eventSource.onopen = () => log(`🔌 SSE 已连接`);
+        eventSource.onerror = () => log(`⚠️ SSE 断开, 自动重连...`);
+      } catch (e) { log(`❌ SSE 创建失败: ${e.message}`); }
+    }
+
+    function stopSSE() {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+    }
+
+    // ===== 启动/停止 =====
+    function startRelay() {
+      const url = $("vps-url").value.trim();
+      if (!url) { log("❌ 请填 VPS URL"); return; }
+      const mode = $("mode-select").value;
+      lastUpdatedAt = 0;
+      lastStopTs = 0;
+      running = true;
+      $("mode-pill").textContent = mode === "mock" ? "Mock" : "Real";
+      $("mode-pill").className = `pill ${mode}`;
+      $("btn-start").disabled = true;
+      $("btn-stop").disabled = false;
+      $("btn-connect").disabled = mode === "real" ? false : true;
+      startSSE();
+      const sec = parseInt($("poll-ms").value) || 5;
+      pollTimer = setInterval(pollOnce, sec * 1000);
+      pollOnce();
+    }
+
+    function stopRelay() {
+      if (pollTimer) clearInterval(pollTimer);
+      stopSSE();
+      pollTimer = null;
+      running = false;
+      $("mode-pill").textContent = "已停止";
+      $("mode-pill").className = "pill stopped";
+      $("btn-start").disabled = false;
+      $("btn-stop").disabled = true;
+      $("btn-connect").disabled = true;
+      log("⏹ 中继停止");
+    }
+
+    // ===== 绑定 =====
+    $("btn-start").addEventListener("click", startRelay);
+    $("btn-stop").addEventListener("click", stopRelay);
+    $("btn-connect").addEventListener("click", connectBLE);
+    $("btn-disconnect").addEventListener("click", disconnectBLE);
+    $("mode-select").addEventListener("change", updatePresetButtons);
+    $("btn-preset-gentle").addEventListener("click", () => runPreset("gentle"));
+    $("btn-preset-medium").addEventListener("click", () => runPreset("medium"));
+    $("btn-preset-wild").addEventListener("click", () => runPreset("wild"));
+    $("btn-preset-stop").addEventListener("click", presetStop);
+
+    // ===== 持久化配置 =====
+    try {
+      const saved = JSON.parse(localStorage.getItem("toy-relay-cfg") || "{}");
+      if (saved.vpsUrl) $("vps-url").value = saved.vpsUrl;
+      if (saved.apiKey) $("api-key").value = saved.apiKey;
+      if (saved.deviceName) $("device-name").value = saved.deviceName;
+      if (saved.serviceUuid) $("service-uuid").value = saved.serviceUuid;
+      if (saved.writeUuid) $("write-uuid").value = saved.writeUuid;
+      if (saved.mode) $("mode-select").value = saved.mode;
+      if (saved.pollMs) $("poll-ms").value = saved.pollMs;
+    } catch {}
+
+    function saveCfg() {
+      localStorage.setItem("toy-relay-cfg", JSON.stringify({
+        vpsUrl: $("vps-url").value,
+        apiKey: $("api-key").value,
+        deviceName: $("device-name").value,
+        serviceUuid: $("service-uuid").value,
+        writeUuid: $("write-uuid").value,
+        mode: $("mode-select").value,
+        pollMs: $("poll-ms").value,
+      }));
+    }
+    ["vps-url","api-key","device-name","service-uuid","write-uuid","mode-select","poll-ms"]
+      .forEach(id => $(id).addEventListener("change", saveCfg));
+
+    log("✨ 页面已加载");
+  </script>
+</body>
+</html>

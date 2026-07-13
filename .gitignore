@@ -1,0 +1,40 @@
+# ===== 敏感信息 (绝不入库) =====
+# API key 文件
+state/api_key.txt
+# 命令历史 (可能含使用习惯)
+state/state.json
+# 环境变量
+.env
+.env.local
+
+# ===== 运行时 =====
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# 日志 / 进程
+logs/
+*.log
+*.pid
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# 备份 / 临时
+*.tar.gz
+*.bak
+*.tmp

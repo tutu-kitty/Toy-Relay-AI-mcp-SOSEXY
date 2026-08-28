@@ -50,6 +50,16 @@ if not API_KEY:
 print(f"🔐 API key: {API_KEY}")
 
 
+# ---------- Mobile Mode ----------
+# 设置 MOBILE_MODE=1 后:
+#   - 强制绑定 127.0.0.1 (不暴露给局域网)
+#   - 跳过所有 API key 校验 (单设备 localhost 无安全意义)
+# 默认关闭, VPS 部署行为完全不变.
+MOBILE_MODE = os.environ.get("MOBILE_MODE", "").lower() in ("1", "true", "yes")
+if MOBILE_MODE:
+    print("📱 Mobile mode: API key disabled, will bind to 127.0.0.1")
+
+
 # ---------- 全局 API Key 中间件 ----------
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """拦截所有非 /relay 路径的请求, 验证 X-API-Key header.
@@ -63,6 +73,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if path.startswith("/relay") or path == "/health" or path == "/" or path == "/stream" or path == "/manual":
+            return await call_next(request)
+        if MOBILE_MODE:
+            # 手机本地模式: 单设备 localhost 无安全意义, 跳过校验
             return await call_next(request)
         key = request.headers.get("X-API-Key", "")
         if not key or key != API_KEY:
@@ -380,4 +393,5 @@ async def manual():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")
+    host = "127.0.0.1" if MOBILE_MODE else "0.0.0.0"
+    uvicorn.run(app, host=host, port=8765, log_level="info")

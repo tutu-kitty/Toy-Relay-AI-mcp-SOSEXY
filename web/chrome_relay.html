@@ -722,6 +722,44 @@
   <script>
     // ===== 工具 =====
     const $ = id => document.getElementById(id);
+
+    // ===== Mobile Mode 自动检测 =====
+    // 当通过 localhost / 127.0.0.1 访问 (即 Pydroid / Termux 等本地启的 toy_api.py)
+    // 自动: 隐藏 VPS URL + API Key 输入框, 用当前 origin 填地址
+    // VPS 部署时 hostname 是域名/IP, 此函数直接 return, 行为完全不变
+    (function setupMobileMode() {
+      const host = location.hostname;
+      if (host !== 'localhost' && host !== '127.0.0.1') return;
+
+      document.body.classList.add('mobile-mode');
+      // 自动填 VPS URL (虽然会被隐藏, 但内部 fetch 还要用)
+      $('vps-url').value = location.origin;
+
+      // 隐藏 VPS URL 和 API Key (label + input)
+      const hideField = (id) => {
+        const input = $(id);
+        if (!input) return;
+        const label = input.previousElementSibling;
+        if (label && label.tagName === 'LABEL') label.style.display = 'none';
+        input.style.display = 'none';
+      };
+      hideField('vps-url');
+      hideField('api-key');
+
+      // 改副标题
+      const sub = document.querySelector('.subtitle');
+      if (sub) sub.textContent = '手机本地模式 · localhost 直连 (无需 VPS)';
+
+      // 在第一块玻璃卡片前插一个 mobile banner
+      const firstGlass = document.querySelector('.container > .glass');
+      if (firstGlass && firstGlass.parentNode) {
+        const banner = document.createElement('div');
+        banner.className = 'glass mobile-banner';
+        banner.innerHTML = '📱 <strong>手机本地模式</strong> · 单设备直连，无需 VPS / 域名 / API Key';
+        firstGlass.parentNode.insertBefore(banner, firstGlass);
+      }
+    })();
+
     const log = (msg) => {
       const ts = new Date().toLocaleTimeString();
       $("log-box").textContent = `[${ts}] ${msg}\n` + $("log-box").textContent;

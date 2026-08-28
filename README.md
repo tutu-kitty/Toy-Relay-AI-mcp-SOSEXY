@@ -111,26 +111,90 @@ PYTHONPATH=src python3 src/toy_api.py
 
 在 VPS 上：
 
+**单服务部署**（VPS 只跑 toy-mcp 一个服务，最简）：
+
 ```bash
 sudo tailscale serve --bg 8765
 ```
 
-你会拿到一个地址：`https://<host>.<your-tailnet>.ts.net/`。手机、MCP client 都用这个地址。
+**多服务部署**（VPS 上还跑其他服务，需要子路径）：
 
-### 4. 配置 MCP client（以 rikkahub 为例）
+```bash
+# 把 toy-mcp 挂到 /toy/ 下, 让出根域 / 避免与其他服务冲突
+sudo tailscale serve --bg --set-path=/toy http://127.0.0.1:8765
+```
 
-- **MCP endpoint**: `https://<host>.<your-tailnet>.ts.net/mcp/`
+你会拿到一个地址：`https://<host>.<your-tailnet>.ts.net/`。手机、MCP client 都用这个地址（多服务模式下子路径是 `/toy/mcp/` 和 `/toy/relay/`）。
+
+### 4. 配置 MCP client
+
+不管用哪个 client，都要填这三个字段：
+
+- **MCP endpoint URL**:
+  - 单服务: `https://<host>.<your-tailnet>.ts.net/mcp/`
+  - 多服务: `https://<host>.<your-tailnet>.ts.net/toy/mcp/`
 - **传输类型**: Streamable HTTP
 - **自定义请求头**:
   - 名称: `X-API-Key`
-  - 值: `cat state/api_key.txt`（或你 export 的那个）
+  - 值: `cat state/api_key.txt`（或你 export 的那个 key）
+
+**各客户端配置入口**：
+
+#### rikkahub（手机 / 桌面）
+
+- 打开 rikkahub → 设置 → MCP 服务器 → 添加服务器
+- 名称: `Play toy.`（随便）
+- 传输类型: Streamable HTTP
+- URL: 见上表
+- 请求头: `X-API-Key` = 你的 key
+
+#### Claude Desktop
+
+编辑配置文件（路径按系统）：
+
+| 系统 | 配置路径 |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+加这一段（如果文件已有 `mcpServers` 字段就合并进去）：
+
+```json
+{
+  "mcpServers": {
+    "toy-api": {
+      "type": "streamable-http",
+      "url": "https://<host>.<your-tailnet>.ts.net/toy/mcp/",
+      "headers": {
+        "X-API-Key": "你的 key"
+      }
+    }
+  }
+}
+```
+
+保存后**重启 Claude Desktop**。
+
+#### Cursor
+
+设置 → MCP → "+ Add new global MCP server"，加同样的 JSON 即可。
+
+#### 其他支持 Streamable HTTP 的客户端
+
+填同样的三个字段就行（URL + 类型 + `X-API-Key` 请求头）。
 
 ### 5. 手机打开中继页面
 
-手机 Chrome 打开 `https://<host>.<your-tailnet>.ts.net/relay/`
+手机 Chrome 打开：
+
+- 单服务: `https://<host>.<your-tailnet>.ts.net/relay/`
+- 多服务: `https://<host>.<your-tailnet>.ts.net/toy/relay/`
 
 填：
-- **VPS URL**: `https://<host>.<your-tailnet>.ts.net`
+- **VPS URL**:
+  - 单服务: `https://<host>.<your-tailnet>.ts.net`
+  - 多服务: `https://<host>.<your-tailnet>.ts.net/toy`
 - **API Key**: 同上
 - **设备名**: 玩具广播名 (例如 `SOSEXY`)
 
@@ -150,12 +214,13 @@ sudo tailscale serve --bg 8765
 
 ### SOSEXY (啵啵贝) — ✅ 已支持
 
-协议文档见 [protocol.md](docs/sosex-protocol.md) 或原始仓库 [51enuxu/sosexy-ble-control](https://github.com/51enuxu/sosexy-ble-control)。
+完整协议见 [docs/sosex-protocol.md](docs/sosex-protocol.md)（含所有 UUID、帧格式、马达控制码、HCI 层抓包特征、Python 参考实现）。原始逆向仓库：[51enuxu/sosexy-ble-control](https://github.com/51enuxu/sosexy-ble-control)。
 
-**关键参数**:
-- Service UUID: `0000ee01-0000-1000-8000-00805f9b34fb`
-- Write Char UUID: `0000ee03-0000-1000-8000-00805f9b34fb`
-- 协议: 12 字节定长帧
+**关键 UUID**:
+- Service: `0000ee01-0000-1000-8000-00805f9b34fb`
+- Write Char: `0000ee03-0000-1000-8000-00805f9b34fb`
+- Notify Char: `0000ee02-0000-1000-8000-00805f9b34fb`
+- 帧格式：12 字节定长（详见协议文档）
 
 ### 其他玩具
 
@@ -253,6 +318,107 @@ cloudflared tunnel --url http://localhost:8765
 - **不用 HTTPS**，但也只在可信网络里能用
 
 > ⚠️ **不要**把 8765 端口直接暴露到公网（不带 HTTPS / 不带反代）。Web Bluetooth API 要求 HTTPS，本地局域网 IP 例外（Chrome 允许 `http://` 在局域网地址上工作）。
+
+---
+
+## 📱 手机本地部署（Android，无需 VPS）
+
+> 没有云服务器？完全 OK。这条路径把 toy-mcp **整套跑在你的 Android 手机里**——不需要 VPS、Tailscale、域名、API Key。
+>
+> ⚠️ **当前只支持 Android**。iOS 因 Web Bluetooth 限制不支持，详见本节末尾说明。iOS 用户请走 VPS 路径。
+
+### 适用场景
+
+- 不想为玩具控制专门租 VPS
+- 玩具和 AI 聊天都在同一台手机上（最常见的本地玩法）
+- 想先验证流程再决定要不要上 VPS
+
+### 1. 装 Pydroid 3
+
+从 Google Play 装 [Pydroid 3](https://play.google.com/store/apps/details?id=ru.iiec.pydroid3)（免费版即可）。打开后进底部 **Terminal** 标签页。
+
+> 替代方案：[Termux](https://f-droid.org/packages/com.termux/)（F-Droid 装），体验更接近 Linux，但需要手动 `apt install python`。
+
+### 2. 克隆 + 装依赖
+
+在 Pydroid 终端粘贴：
+
+```bash
+cd /sdcard/Download   # 或任何可写目录
+git clone https://github.com/tutu-kitty/toy-mcp.git
+cd toy-mcp
+bash scripts/install-mobile.sh
+```
+
+`install-mobile.sh` 自动装 `fastapi / uvicorn / mcp`（纯 Python 包，跳过 C 扩展），约 2-3 分钟。
+
+### 3. 启动
+
+```bash
+bash scripts/start-mobile.sh
+```
+
+会自动：
+
+1. 后台启 toy_api.py，监听 `127.0.0.1:8765`，API key 已禁用
+2. 健康检查通过后拉起系统 Chrome
+3. 打开 `http://127.0.0.1:8765/relay/`
+
+中继页检测到 localhost → 进入「📱 手机本地模式」，自动隐藏 VPS URL / API Key 输入框。
+
+### 4. 连玩具
+
+中继页 → 切到 **Real 模式** → 点 **🔗 连接 BLE** → 选 `SOSEXY` → 配对。
+
+### 5. 配置 MCP client（rikkahub）
+
+| 项 | 值 |
+|---|---|
+| 名称 | 随便（如 `Toy (本地)`） |
+| 传输类型 | Streamable HTTP |
+| URL | `http://127.0.0.1:8765/mcp/` |
+| 请求头 | **不填**（手机本地模式已禁用 API key） |
+
+### 6. 测试
+
+在 rikkahub 跟 AI 说：
+
+> "把震动设到 50"
+> "把吮吸设到 30"
+> "停止所有"
+
+玩具应该几乎瞬间响应。
+
+---
+
+### ⚠️ 后台保活（关键）
+
+Pydroid 退后台后 Python 进程会被系统杀。必须做这几件事：
+
+1. **首次启动弹通知权限** → 选「允许」（Pydroid 用前台服务通知保活）
+2. **Pydroid 设置 → 电池优化** → 选「不优化」
+3. **别划掉 Pydroid 的通知**（划掉等于主动停服务）
+4. **深度休眠会断 BLE**——锁屏太久后需要重连
+
+服务挂了先看 `tail -f logs/api.log` 排查。
+
+### 🔄 跟 VPS 路径的区别
+
+| | 手机本地 | VPS |
+|---|---|---|
+| 需要 VPS | ❌ | ✅ |
+| 需要 Tailscale / 域名 | ❌ | ✅ |
+| 需要 API Key | ❌ | ✅ |
+| 监听地址 | `127.0.0.1` | `0.0.0.0` |
+| 后台保活 | 手动配 | systemd 自动 |
+| 跨设备 | ❌（玩具和 AI 必须同手机） | ✅ |
+| 锁屏稳定性 | ⚠️ 深度休眠会断 | ✅ 一直稳 |
+
+两条路径**共用同一份 toy_api.py**——`MOBILE_MODE=1` 环境变量是唯一开关。VPS 部署不设这个变量，行为完全不变。
+
+### 🍎 iOS 用户
+
+iOS 上 Safari 和 Chrome 都是 WKWebView，**不支持 Web Bluetooth**。要走这条路要装 [Bluefy](https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055) 这个第三方浏览器，体验割裂；iOS 后台策略还会冻结 iSH 进程，**基本做不到锁屏后继续玩**。**iOS 用户建议直接走 VPS 路径。**
 
 ---
 

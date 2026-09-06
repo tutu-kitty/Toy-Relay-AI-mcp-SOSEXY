@@ -28,6 +28,32 @@ PYTHON="$(command -v python3 || command -v python)"
 echo "🔧 Python: $($PYTHON --version) @ $(which $PYTHON)"
 echo ""
 
+# ---- 检测 Termux 环境 ----
+IS_TERMUX=0
+if [ -d "/data/data/com.termux" ]; then
+    IS_TERMUX=1
+    echo "📱 检测到 Termux 环境"
+    echo ""
+
+    # Termux 必装 git (本脚本要在 git 仓库里跑,且 git clone 是用户前置步骤)
+    if ! command -v git > /dev/null 2>&1; then
+        echo "❌ Termux 缺 git"
+        echo ""
+        echo "请先跑:"
+        echo "  pkg install git"
+        echo ""
+        echo "国内用户先换源:termux-change-repo → 选清华 / 中科大 / 阿里"
+        exit 1
+    fi
+
+    # 提示 storage 没设
+    if [ ! -d "$HOME/storage" ]; then
+        echo "⚠️  没看到 ~/storage,Termux 还没访问 sdcard"
+        echo "   跑一次: termux-setup-storage"
+        echo ""
+    fi
+fi
+
 # 升级 pip (Pydroid 自带 pip 但版本可能旧)
 echo "⏫ 升级 pip..."
 $PYTHON -m pip install --upgrade pip --quiet 2>&1 | tail -3 || true

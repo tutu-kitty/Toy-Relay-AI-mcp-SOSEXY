@@ -43,6 +43,23 @@ if ! $PYTHON -c "import fastapi, uvicorn, mcp" 2>/dev/null; then
     exit 1
 fi
 
+# ---- Termux: 启 wake-lock + curl 检查 ----
+if [ -d "/data/data/com.termux" ]; then
+    if ! command -v curl > /dev/null 2>&1; then
+        echo "❌ Termux 缺 curl(健康检查要用)"
+        echo "   请跑: pkg install curl"
+        exit 1
+    fi
+    if command -v termux-wake-lock > /dev/null 2>&1; then
+        echo "🔒 Termux wake-lock(防锁屏休眠)..."
+        termux-wake-lock || echo "   ⚠️  wake-lock 没起来, toy-mcp 锁屏后可能被系统杀"
+        echo ""
+    else
+        echo "⚠️  没找到 termux-wake-lock,跳过(锁屏后 toy-mcp 会被杀)"
+        echo ""
+    fi
+fi
+
 # ---- 停旧进程 ----
 
 if [ -f "$LOG_DIR/api.pid" ]; then
@@ -102,17 +119,22 @@ echo ""
 
 RELAY_URL="http://127.0.0.1:8765/relay/"
 
-if command -v am > /dev/null 2>&1; then
-    # Android (Pydroid 终端 / Termux 都内置 am)
+if [ -d "/data/data/com.termux" ] && command -v termux-open-url > /dev/null 2>&1; then
+    # Termux: termux-open-url 更稳(选默认浏览器)
+    echo "🌐 打开浏览器..."
+    if termux-open-url "$RELAY_URL" 2>/dev/null; then
+        echo "   ✓ 浏览器已拉起"
+    else
+        echo "   ⚠️  浏览器没拉起来, 手动打开: $RELAY_URL"
+    fi
+elif command -v am > /dev/null 2>&1; then
+    # Pydroid 终端 / 其他 Android 环境
     echo "🌐 打开 Chrome 中继页..."
     if am start -a android.intent.action.VIEW -d "$RELAY_URL" > /dev/null 2>&1; then
         echo "   ✓ Chrome 已拉起"
     else
         echo "   ⚠️  Chrome 没拉起来, 手动打开: $RELAY_URL"
     fi
-elif command -v termux-open-url > /dev/null 2>&1; then
-    echo "🌐 打开浏览器..."
-    termux-open-url "$RELAY_URL" || echo "   手动打开: $RELAY_URL"
 else
     echo "🌐 浏览器手动打开: $RELAY_URL"
 fi

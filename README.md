@@ -333,44 +333,108 @@ cloudflared tunnel --url http://localhost:8765
 - 玩具和 AI 聊天都在同一台手机上（最常见的本地玩法）
 - 想先验证流程再决定要不要上 VPS
 
-### 1. 装 Pydroid 3
+### 选哪个？
 
-从 Google Play 装 [Pydroid 3](https://play.google.com/store/apps/details?id=ru.iiec.pydroid3)（免费版即可）。打开后进底部 **Terminal** 标签页。
+| 维度 | Termux（推荐） | Pydroid 3 |
+|---|---|---|
+| Python 包安装 | ✅ 接近 Linux,稳 | ⚠️ PEP 668 偶尔抽风 |
+| 学习曲线 | 中（熟悉 `pkg` 即可） | 低（开箱即用） |
+| 国内可用性 | ⚠️ **需换源** | ✅ 直接用 |
+| 锁屏稳定性 | ✅ `termux-wake-lock` | ⚠️ 需前台服务通知 |
+| 适合谁 | 开发者 / 折腾爱好者 | 非开发者 / 想省事 |
 
-> 替代方案：[Termux](https://f-droid.org/packages/com.termux/)（F-Droid 装），体验更接近 Linux，但需要手动 `apt install python`。
+**默认推荐 Termux**，尤其国内用户；怕折腾选 Pydroid。
 
-### 2. 克隆 + 装依赖
+---
 
-在 Pydroid 终端粘贴：
+### 方案 A：Termux（推荐,国内主流）
+
+#### A.1 装 Termux
+
+> ⚠️ **必须从 F-Droid 装**,Google Play 版已停更,装那个会有各种诡异问题。
+
+🔗 https://f-droid.org/packages/com.termux/
+
+#### A.2 首次初始化
+
+> ⚠️ **国内用户必须先换源** —— 默认源连不上,`pkg update` 直接卡死。
 
 ```bash
-cd /sdcard/Download   # 或任何可写目录
+termux-change-repo                # 选 清华 / 中科大 / 阿里源 任一
+pkg update && pkg upgrade -y
+pkg install python git curl       # 三个都要装 (Pydroid 自带)
+termux-setup-storage              # 给 Termux 访问 sdcard 的权限
+```
+
+#### A.3 克隆 + 装依赖
+
+```bash
+cd ~/storage/downloads            # Termux 用 storage 路径
+git clone https://github.com/tutu-kitty/Toy-Relay-AI-mcp-SOSEXY.git
+cd Toy-Relay-AI-mcp-SOSEXY
+bash scripts/install-mobile.sh    # 检测到 Termux 会多检查 git / curl
+```
+
+#### A.4 启动 + 防杀后台
+
+```bash
+termux-wake-lock                  # 关键!防锁屏后 CPU 休眠(SSE 不掉)
+bash scripts/start-mobile.sh      # Termux 下自动跑 wake-lock + termux-open-url
+```
+
+**然后**(必做):Android 系统设置 → 应用 → **Termux** → 电池 → 选「**不优化**」(或「无限制」)
+
+⚠️ `termux-wake-lock` 是单次有效,每次启动脚本前再跑(或加到 `~/.bashrc`)。
+
+---
+
+### 方案 B：Pydroid 3（开箱即用）
+
+#### B.1 装 Pydroid 3
+
+从 Google Play 装 [Pydroid 3](https://play.google.com/store/apps/details?id=ru.iiec.pydroid3)(免费版即可)。打开后进底部 **Terminal** 标签页。
+
+#### B.2 克隆 + 装依赖
+
+```bash
+cd /sdcard/Download               # 或任何可写目录
 git clone https://github.com/tutu-kitty/Toy-Relay-AI-mcp-SOSEXY.git
 cd Toy-Relay-AI-mcp-SOSEXY
 bash scripts/install-mobile.sh
 ```
 
-`install-mobile.sh` 自动装 `fastapi / uvicorn / mcp`（纯 Python 包，跳过 C 扩展），约 2-3 分钟。
+`install-mobile.sh` 自动装 `fastapi / uvicorn / mcp`(纯 Python 包,跳过 C 扩展),约 2-3 分钟。
 
-### 3. 启动
+**如果 pip 报错**(Pydroid 常见):
+
+```bash
+python -m pip install --prefer-binary --break-system-packages \
+    fastapi uvicorn "mcp>=1.0"
+```
+
+#### B.3 启动
 
 ```bash
 bash scripts/start-mobile.sh
 ```
 
-会自动：
+会自动:
 
-1. 后台启 toy_api.py，监听 `127.0.0.1:8765`，API key 已禁用
+1. 后台启 `toy_api.py`,监听 `127.0.0.1:8765`,API key 已禁用
 2. 健康检查通过后拉起系统 Chrome
 3. 打开 `http://127.0.0.1:8765/relay/`
 
-中继页检测到 localhost → 进入「📱 手机本地模式」，自动隐藏 VPS URL / API Key 输入框。
+中继页检测到 localhost → 进入「📱 手机本地模式」,自动隐藏 VPS URL / API Key 输入框。
 
-### 4. 连玩具
+---
+
+### 共同步骤（两个方案都适用）
+
+#### 1. 连玩具
 
 中继页 → 切到 **Real 模式** → 点 **🔗 连接 BLE** → 选 `SOSEXY` → 配对。
 
-### 5. 配置 MCP client（rikkahub）
+#### 2. 配置 MCP client（rikkahub）
 
 | 项 | 值 |
 |---|---|
@@ -379,7 +443,7 @@ bash scripts/start-mobile.sh
 | URL | `http://127.0.0.1:8765/mcp/` |
 | 请求头 | **不填**（手机本地模式已禁用 API key） |
 
-### 6. 测试
+#### 3. 测试
 
 在 rikkahub 跟 AI 说：
 
@@ -393,26 +457,27 @@ bash scripts/start-mobile.sh
 
 ### ⚠️ 后台保活（关键）
 
-Pydroid 退后台后 Python 进程会被系统杀。必须做这几件事：
+| 方案 | 必做 |
+|---|---|
+| **Termux** | 跑 `termux-wake-lock` + Android 设置 → Termux → 电池 → 不优化 |
+| **Pydroid** | 首次启动允许通知 + Pydroid 设置 → 电池 → 不优化 + 别划掉通知 |
 
-1. **首次启动弹通知权限** → 选「允许」（Pydroid 用前台服务通知保活）
-2. **Pydroid 设置 → 电池优化** → 选「不优化」
-3. **别划掉 Pydroid 的通知**（划掉等于主动停服务）
-4. **深度休眠会断 BLE**——锁屏太久后需要重连
+两边共性:**深度休眠会断 BLE** —— 锁屏太久后需要重连。
 
 服务挂了先看 `tail -f logs/api.log` 排查。
 
 ### 🔄 跟 VPS 路径的区别
 
-| | 手机本地 | VPS |
-|---|---|---|
-| 需要 VPS | ❌ | ✅ |
-| 需要 Tailscale / 域名 | ❌ | ✅ |
-| 需要 API Key | ❌ | ✅ |
-| 监听地址 | `127.0.0.1` | `0.0.0.0` |
-| 后台保活 | 手动配 | systemd 自动 |
-| 跨设备 | ❌（玩具和 AI 必须同手机） | ✅ |
-| 锁屏稳定性 | ⚠️ 深度休眠会断 | ✅ 一直稳 |
+| | Termux 手机本地 | Pydroid 手机本地 | VPS |
+|---|---|---|---|
+| 需要 VPS | ❌ | ❌ | ✅ |
+| 需要 Tailscale / 域名 | ❌ | ❌ | ✅ |
+| 需要 API Key | ❌ | ❌ | ✅ |
+| 监听地址 | `127.0.0.1` | `127.0.0.1` | `0.0.0.0` |
+| 后台保活 | 手动(wake-lock) | 手动(前台通知) | systemd 自动 |
+| 跨设备 | ❌ | ❌ | ✅ |
+| 锁屏稳定性 | ✅ 较稳 | ⚠️ 偶断 | ✅ 一直稳 |
+| Python 包稳定性 | ✅ 接近 Linux | ⚠️ PEP 668 | ✅ 正常 |
 
 两条路径**共用同一份 toy_api.py**——`MOBILE_MODE=1` 环境变量是唯一开关。VPS 部署不设这个变量，行为完全不变。
 

@@ -92,8 +92,8 @@ tailscale status
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/toy-mcp.git
-cd toy-mcp
+git clone https://github.com/tutu-kitty/Toy-Relay-AI-mcp-SOSEXY.git
+cd Toy-Relay-AI-mcp-SOSEXY
 
 # 安装依赖
 pip install fastapi 'uvicorn[standard]' httpx 'mcp>=1.0' pydantic
@@ -345,8 +345,8 @@ cloudflared tunnel --url http://localhost:8765
 
 ```bash
 cd /sdcard/Download   # 或任何可写目录
-git clone https://github.com/tutu-kitty/toy-mcp.git
-cd toy-mcp
+git clone https://github.com/tutu-kitty/Toy-Relay-AI-mcp-SOSEXY.git
+cd Toy-Relay-AI-mcp-SOSEXY
 bash scripts/install-mobile.sh
 ```
 

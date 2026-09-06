@@ -68,7 +68,7 @@ echo ""
 $PYTHON -m pip install --prefer-binary --quiet \
     "fastapi" \
     "uvicorn" \
-    "mcp>=1.0"
+    "mcp>=1.0,<2.0"
 
 echo ""
 echo "✅ 验证依赖..."

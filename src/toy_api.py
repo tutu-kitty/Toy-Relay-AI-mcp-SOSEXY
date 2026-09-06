@@ -61,21 +61,36 @@ if MOBILE_MODE:
 
 
 # ---------- 全局 API Key 中间件 ----------
+# 鉴权设计 (隐私分层):
+#   /mcp/* (MCP 客户端接入) —— 这是 AI 集成的入口,
+#       VPS 模式要求 X-API-Key (公网暴露, 必须有)
+#       MOBILE 模式放行 (只绑 127.0.0.1, localhost 上的 MCP 客户端是用户自己拉的)
+#   /toy/* /state (HTTP 控制端点) —— 这是直接控制玩具的 HTTP 接口,
+#       永远要求 X-API-Key, 包括 MOBILE 模式 (详见下方 require_api_key 注释)
+#       原因: 手机上任何 app 都能向 127.0.0.1 发 HTTP, 不锁的话恶意 app 能偷偷启动玩具
 class APIKeyMiddleware(BaseHTTPMiddleware):
-    """拦截所有非 /relay 路径的请求, 验证 X-API-Key header.
+    """拦截需要鉴权的请求路径, 验证 X-API-Key header.
 
-    - 静态文件 /relay/* 放行
-    - /health 放行
-    - / 放行
-    - /stream 放行 (SSE 不能设 header)
-    - 其他路径都需要 X-API-Key: <token>
+    放行路径 (不需要鉴权):
+    - /relay/* (静态中继页)
+    - /health (存活探针)
+    - /       (根目录欢迎页)
+    - /stream (SSE, 浏览器 EventSource 不能设 header)
+    - /manual (操作手册, 公开文档)
+
+    MOBILE 模式额外放行 /mcp/* (MCP 客户端接入), 因只绑 127.0.0.1;
+    但 /toy/* /state 等控制端点**不**走这个中间件放行 —— 它们用下方
+    `Depends(require_api_key)` 单独锁, 即使在手机本地也要 API key。
     """
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if path.startswith("/relay") or path == "/health" or path == "/" or path == "/stream" or path == "/manual":
             return await call_next(request)
         if MOBILE_MODE:
-            # 手机本地模式: 单设备 localhost 无安全意义, 跳过校验
+            # 手机本地模式: 中间件放行所有路径。
+            #  - /mcp/* 借此获得放行 (MCP 客户端是用户主动接入的, localhost 受控)
+            #  - /toy/* /state 另有 Depends(require_api_key) 在路由层上锁, 这里放行不影响安全
+            #  (详见下方 require_api_key 注释 —— “为什么控制端点要永远上锁”)
             return await call_next(request)
         key = request.headers.get("X-API-Key", "")
         if not key or key != API_KEY:
@@ -264,7 +279,27 @@ class IntensityReq(BaseModel):
     intensity: int = Field(..., ge=0, le=100, description="强度 0-100, 0=停止")
 
 
-# Auth 依赖: 检查 X-API-Key header
+# 控制端点鉴权依赖: 检查 X-API-Key header
+#
+# 这个 Depends 用在 /state, /toy/* 等**直接控制玩具**的 HTTP 端点上,
+# 跟上面的 APIKeyMiddleware 是两个独立层:
+#
+#   - APIKeyMiddleware: 全局中间件, 按路径前缀放行 /relay / /health / /mcp(MOBILE)
+#   - Depends(require_api_key): 路由级依赖, 锁在控制端点上, 不受中间件放行影响
+#
+# **为什么控制端点要永远上锁, 包括 MOBILE 模式?**
+#
+#   手机上任何 app 都能向 127.0.0.1 端口发 HTTP 请求 (沙箱不隔离 loopback)。
+#   如果 /toy/* 在 MOBILE 下放行, 恶意 app 可以偷偷:
+#     - POST /toy/vibration {intensity: 100}   → 直接启动玩具
+#     - GET /state                              → 偷看当前玩具状态 / 用户使用习惯
+#   即使 VPS 模式绑 0.0.0.0 也是同样逻辑 —— 公网下更不能放行控制端点。
+#
+# **隐私边界:**
+#   MCP 客户端 (rikkahub / Claude Desktop / 自家前端) —— 入口受控, 是用户主动接入的
+#   HTTP 控制端点 —— 任何进程都能调, 必须用 API key 守住
+#
+# MCP 鉴权是为隐私; 控制端点鉴权也是为隐私。两条线都要, 但作用域不同。
 async def require_api_key(request: Request):
     key = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "")
     if not key or key != API_KEY:

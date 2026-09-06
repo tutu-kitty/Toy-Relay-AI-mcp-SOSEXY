@@ -96,7 +96,7 @@ git clone https://github.com/tutu-kitty/Toy-Relay-AI-mcp-SOSEXY.git
 cd Toy-Relay-AI-mcp-SOSEXY
 
 # 安装依赖
-pip install fastapi 'uvicorn[standard]' httpx 'mcp>=1.0' pydantic
+pip install fastapi 'uvicorn[standard]' httpx 'mcp>=1.0,<2.0' pydantic
 
 # (推荐) 固定 API key, 不设的话首次启动会自动生成写到 state/api_key.txt
 export TOY_API_KEY=***  # python -c "import secrets; print(secrets.token_urlsafe(24))"
@@ -271,9 +271,38 @@ toy-mcp/
 
 ## 🔐 安全
 
-- **API Key 认证**: 所有 HTTP API 和 MCP endpoint 都需要 `X-API-Key` header
-- **Tailscale HTTPS**: 默认仅 tailnet 内设备可访问
-- **不放公网**: 不要把 8765 端口直接暴露到公网！
+### 鉴权模型（隐私分层设计）
+
+**MCP 鉴权是为隐私。** toy-mcp 用**两层鉴权**守住隐私边界，根据部署模式动态调整作用域：
+
+| 端点 | VPS 模式 | 手机本地模式 | 为什么这样设计 |
+|---|---|---|---|
+| `/mcp/*` (MCP 客户端接入) | 🔒 需要 `X-API-Key` | 🔓 放行 | MCP 客户端是**用户主动接入**的；VPS 上公网暴露必须锁，手机本地只绑 127.0.0.1 进程间互相受限 |
+| `/toy/*` (HTTP 控制：振 / 吸 / 电 / 停) | 🔒 需要 `X-API-Key` | 🔒 **仍需** `X-API-Key` | 这是直接启动玩具的接口，手机上任何 app 都能向 127.0.0.1 发 HTTP，不锁会被恶意调用 |
+| `/state` (状态查询) | 🔒 需要 `X-API-Key` | 🔒 **仍需** `X-API-Key` | 会泄漏玩具当前状态 / 使用习惯 |
+| `/health` `/relay/*` `/` `/stream` `/manual` | 🔓 放行 | 🔓 放行 | 存活探针 / 静态中继页 / SSE 推送 / 公开文档，不需要鉴权 |
+
+### 为什么控制端点 (`/toy/*` `/state`) 在手机本地也上锁？
+
+Android 沙箱**不隔离 loopback** —— 任何 app 都能向 `127.0.0.1:8765` 发 HTTP 请求。如果控制端点放行，恶意 app 可以偷偷：
+
+- `POST /toy/vibration {"intensity": 100}` → 直接启动玩具
+- `GET /state` → 偷看当前玩具状态 / 用户使用习惯
+
+### 隐私边界
+
+- **MCP 客户端** (rikkahub / Claude Desktop / 自家前端) —— 入口受控，是用户主动接入的
+- **HTTP 控制端点** —— 任何进程都能调，必须用 API key 守住
+
+> **MCP 鉴权是为隐私；控制端点鉴权也是为隐私。两条线都要，但作用域不同。**
+
+实现细节见 [`src/toy_api.py`](src/toy_api.py) 里的 `APIKeyMiddleware`（中间件层）和 `require_api_key`（路由依赖层）注释。
+
+### 部署安全提醒
+
+- **Tailscale HTTPS**：默认仅 tailnet 内设备可访问
+- **不放公网**：不要把 8765 端口直接暴露到公网！如必须，前面套 Caddy / Cloudflare Tunnel 加 HTTPS + 防火墙
+- **API key 保密**：`state/api_key.txt` 不要入库，`.gitignore` 已默认排除
 
 ## 🚫 没有 Tailscale
 
@@ -409,7 +438,7 @@ bash scripts/install-mobile.sh
 
 ```bash
 python -m pip install --prefer-binary --break-system-packages \
-    fastapi uvicorn "mcp>=1.0"
+    fastapi uvicorn "mcp>=1.0,<2.0"
 ```
 
 #### B.3 启动

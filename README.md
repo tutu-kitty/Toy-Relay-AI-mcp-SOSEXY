@@ -227,7 +227,7 @@ sudo tailscale serve --bg --set-path=/toy http://127.0.0.1:8765
 要支持新玩具：
 
 1. 用 nRF Connect 扫描玩具的 GATT service/characteristic
-2. 逆向协议（推荐用官方 App 反编译，参考 [逆向教程](docs/reverse-engineering.md)）
+2. 逆向协议（推荐用官方 App 反编译，参考 [SOSEXY 协议逆向文档](docs/sosex-protocol.md) 作为示例）
 3. 在 `toy_api.py` 里加新马达控制码 + 协议帧构建函数
 
 ## 📁 项目结构
@@ -243,9 +243,12 @@ toy-mcp/
 │   ├── state.json          # 当前玩具状态
 │   └── api_key.txt         # API Key (首次启动生成)
 ├── scripts/
-│   └── start.sh            # 启动脚本
+│   ├── start.sh            # VPS 启动脚本
+│   ├── install-mobile.sh   # Android 装依赖 (Termux / Pydroid 通用)
+│   └── start-mobile.sh     # Android 启服务 (自动检测 Termux / Pydroid 环境)
 ├── docs/
-│   └── ...                 # 协议文档 / 逆向教程
+│   ├── MCP_CLIENT_SETUP.md # MCP 客户端配置
+│   └── sosex-protocol.md   # SOSEXY 玩具 BLE 协议
 ├── README.md
 └── LICENSE                 # MIT
 ```

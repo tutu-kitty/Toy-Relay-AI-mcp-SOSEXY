@@ -630,14 +630,19 @@
       <p class="subtitle">玩具控制台 · 通过 Tailscale 安全直连</p>
     </header>
 
+    <!-- local-only UI: 后端按 client.host 决定是否渲染 (手机本地模式才显示) -->
+    <div id="local-control" class="glass mobile-banner">📱 <strong>手机本地模式</strong> · 单设备直连，无需 VPS / 域名 / API Key</div>
+
     <!-- 1. 配置 -->
     <div class="glass">
       <h2>连接配置</h2>
-      <label>VPS URL <span style="opacity:.6">(Tailscale HTTPS)</span></label>
-      <input type="text" id="vps-url" placeholder="https://your-vps.ts.net" />
+      <div id="remote-config">
+        <label>VPS URL <span style="opacity:.6">(Tailscale HTTPS)</span></label>
+        <input type="text" id="vps-url" placeholder="https://your-vps.ts.net" />
 
-      <label>API Key <span style="opacity:.6">(VPS state/api_key.txt)</span></label>
-      <input type="text" id="api-key" placeholder="xxx..." />
+        <label>API Key <span style="opacity:.6">(VPS state/api_key.txt)</span></label>
+        <input type="text" id="api-key" placeholder="xxx..." />
+      </div>
 
       <div class="row" style="margin-top: 14px;">
         <div>
@@ -723,42 +728,19 @@
     // ===== 工具 =====
     const $ = id => document.getElementById(id);
 
-    // ===== Mobile Mode 自动检测 =====
-    // 当通过 localhost / 127.0.0.1 访问 (即 Pydroid / Termux 等本地启的 toy_api.py)
-    // 自动: 隐藏 VPS URL + API Key 输入框, 用当前 origin 填地址
-    // VPS 部署时 hostname 是域名/IP, 此函数直接 return, 行为完全不变
-    (function setupMobileMode() {
-      const host = location.hostname;
-      if (host !== 'localhost' && host !== '127.0.0.1') return;
-
-      document.body.classList.add('mobile-mode');
-      // 自动填 VPS URL (虽然会被隐藏, 但内部 fetch 还要用)
-      $('vps-url').value = location.origin;
-
-      // 隐藏 VPS URL 和 API Key (label + input)
-      const hideField = (id) => {
-        const input = $(id);
-        if (!input) return;
-        const label = input.previousElementSibling;
-        if (label && label.tagName === 'LABEL') label.style.display = 'none';
-        input.style.display = 'none';
-      };
-      hideField('vps-url');
-      hideField('api-key');
-
-      // 改副标题
-      const sub = document.querySelector('.subtitle');
-      if (sub) sub.textContent = '手机本地模式 · localhost 直连 (无需 VPS)';
-
-      // 在第一块玻璃卡片前插一个 mobile banner
-      const firstGlass = document.querySelector('.container > .glass');
-      if (firstGlass && firstGlass.parentNode) {
-        const banner = document.createElement('div');
-        banner.className = 'glass mobile-banner';
-        banner.innerHTML = '📱 <strong>手机本地模式</strong> · 单设备直连，无需 VPS / 域名 / API Key';
-        firstGlass.parentNode.insertBefore(banner, firstGlass);
-      }
-    })();
+    // ===== 模式 helper (兼容 local 模式无 #remote-config 的情况) =====
+    // local 模式下 VPS URL / API Key 输入框根本不在 DOM (后端剥掉了 #remote-config),
+    // 所以 fetch / SSE / startRelay 都不能直接读 $('vps-url'), 要 fallback 到 location.origin
+    function getBaseUrl() {
+      const el = $('vps-url');
+      return (el && el.value.trim())
+        ? el.value.trim().replace(/\/$/, "").replace(/\/state$/, "")
+        : location.origin;
+    }
+    function getApiKey() {
+      const el = $('api-key');
+      return el ? el.value.trim() : "";
+    }
 
     const log = (msg) => {
       const ts = new Date().toLocaleTimeString();
@@ -958,8 +940,8 @@
     }
 
     async function pollOnce() {
-      const base = $("vps-url").value.trim().replace(/\/$/, "").replace(/\/state$/, "");
-      const apiKey = $("api-key").value.trim();
+      const base = getBaseUrl();
+      const apiKey = getApiKey();
       const headers = { "Cache-Control": "no-store" };
       if (apiKey) headers["X-API-Key"] = apiKey;
       try {
@@ -973,7 +955,7 @@
     }
 
     function startSSE() {
-      const base = $("vps-url").value.trim().replace(/\/$/, "").replace(/\/state$/, "");
+      const base = getBaseUrl();
       const url = base + "/stream";
       if (eventSource) { eventSource.close(); eventSource = null; }
       try {
@@ -993,8 +975,9 @@
 
     // ===== 启动/停止 =====
     function startRelay() {
-      const url = $("vps-url").value.trim();
-      if (!url) { log("❌ 请填 VPS URL"); return; }
+      // local 模式下 vps-url input 不在 DOM, 直接用 location.origin
+      // VPS 模式下 url 由输入框决定, 但仍然允许 fallback (万一用户留空)
+      const url = ($('vps-url') && $('vps-url').value.trim()) || location.origin;
       const mode = $("mode-select").value;
       lastUpdatedAt = 0;
       lastStopTs = 0;

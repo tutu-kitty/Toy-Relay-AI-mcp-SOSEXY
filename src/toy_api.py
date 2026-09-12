@@ -13,6 +13,7 @@ Toy API + MCP (合并版) - 单端口 8765
   - 内部调本地函数, 不用 httpx
 """
 import json
+import re
 import secrets
 import time
 import asyncio
@@ -21,7 +22,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Depends, Request, status
-from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -407,10 +408,58 @@ async def toy_stop_http():
     return {"ok": True, "state": stop_all()}
 
 
+# 按访问来源动态渲染的中继页: 本机 / 远端看到不同的 DOM
+# ----------------------------------------------------------------------------
+# 为什么不用 CSS display:none:
+#   学员在 127.0.0.1 打开页面时, JS 之前用 IIFE + style.display='none' 藏住
+#   VPS URL / API Key 两个 input。DevTools 仍能看到空 input,容易困惑
+#   "是不是没装好"或"为什么这里有空白 input"。这次改成后端按 client.host
+#   直接把对应的 div 从渲染 HTML 里剥掉 —— DevTools 看不到,前端 fetch 也不会
+#   误读空 value。
+#
+# 两个 div 的语义:
+#   #remote-config: VPS 部署才需要的输入 (VPS URL + API Key)
+#   #local-control: 本机模式专属 UI (mobile banner, 未来可加本机专属提示)
+#   共享控制 (BLE/预设/状态/日志) 在两个 div 外面,两种模式都有。
+_DIV_PATTERN = re.compile(
+    r'<div[^>]*id=["\'](?P<id>remote-config|local-control)["\'][^>]*>.*?</div>\s*',
+    re.DOTALL,
+)
+
+
+def _strip_chrome_relay_divs(html: str, host: str) -> str:
+    """按 host 剥掉 chrome_relay.html 里的 #remote-config 或 #local-control。
+
+    - 本机 (127.0.0.1 / ::1): 剥 #remote-config, 学员看不到 VPS URL/API Key
+    - 其他 (VPS / Tailnet / 公网): 剥 #local-control, VPS 用户看不到本机 banner
+    """
+    keep = "local-control" if host in ("127.0.0.1", "::1") else "remote-config"
+    return _DIV_PATTERN.sub(
+        lambda m: "" if m.group("id") != keep else m.group(0),
+        html,
+    )
+
+
+@app.get("/relay/chrome_relay.html", response_class=HTMLResponse, include_in_schema=False)
+async def chrome_relay_page(request: Request):
+    """按访问来源动态渲染中继页 (覆盖 StaticFiles mount 的同名文件)。
+
+    注册顺序: 此路由在 StaticFiles mount 之前声明, 因此 FastAPI 顺序匹配
+    会优先命中这里, 而不是落到 mount 上去 serve 原始静态文件。
+    """
+    html_path = WEB_DIR / "chrome_relay.html"
+    html = html_path.read_text(encoding="utf-8")
+    host = (request.client.host if request.client else "") or ""
+    return HTMLResponse(_strip_chrome_relay_divs(html, host))
+
+
 # 静态文件: Chrome 中继页面
 WEB_DIR = ROOT / "web"
 if WEB_DIR.exists():
     app.mount("/relay", StaticFiles(directory=str(WEB_DIR), html=True), name="relay")
+
+
+
 
 
 # 手动手册 (markdown, 文本响应)

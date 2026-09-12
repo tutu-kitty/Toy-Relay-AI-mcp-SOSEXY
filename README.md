@@ -456,7 +456,7 @@ bash scripts/start-mobile.sh
 2. 健康检查通过后拉起系统 Chrome
 3. 打开 `http://127.0.0.1:8765/relay/`
 
-中继页检测到 localhost → 进入「📱 手机本地模式」,自动隐藏 VPS URL / API Key 输入框。
+中继页检测到 localhost → 进入「📱 手机本地模式」,**后端从 DOM 中剥除** VPS URL / API Key 输入框 (不只是 CSS 隐藏)。
 
 ---
 
@@ -486,6 +486,31 @@ bash scripts/start-mobile.sh
 玩具应该几乎瞬间响应。
 
 ---
+
+### 📱 中继页 DOM 差异（VPS vs 本机）
+
+中继页 (`/relay/chrome_relay.html`) 是按访问来源**后端动态渲染**的。`toy_api.py` 读 `request.client.host`,决定剥哪个 div:
+
+| 访问来源 | `#remote-config` (VPS URL + API Key) | `#local-control` (mobile banner) | 共享控制 (BLE/预设/状态/日志) |
+|---|---|---|---|
+| 本机 `127.0.0.1` | ❌ 从 DOM 移除 | ✅ 显示 | ✅ 显示 |
+| VPS / Tailnet / 公网 | ✅ 显示 | ❌ 从 DOM 移除 | ✅ 显示 |
+
+**为什么不用 CSS `display:none` 藏?**
+
+之前的版本用 JS IIFE 把 input `style.display = 'none'`。两个老问题:
+
+1. **半激活 bug**: IIFE 里任何一行 throw(比如 `$('vps-url').value = ...` 找不到元素),后续 `hideField()` 全跳过。结果: input 视觉上藏了但 DOM 里还在 + value 是空 —— DevTools 看得到空 input,前端 fetch 又报 "请填 VPS URL"。学员当时撞的就是这个。
+2. **前端代码永远要写 "input 可能不存在" 的兜底**: 每个 `$(...).value.trim()` 都要先 `if (!el) return;`,非常脏。
+
+改成后端剥 div 之后:
+- DevTools 看到的 DOM 就是干净的(本机模式根本没有 VPS URL/API Key 节点)
+- 前端 `getBaseUrl()` / `getApiKey()` helper 检测 input 不在 → fallback 到 `location.origin` + 空字符串(本机模式 API key 已禁用)
+- 两个老问题同时消失
+
+**自己改模板时的约束**
+
+如果你要往 `#remote-config` 或 `#local-control` 里加新内容,**不要在里面嵌套 `<div>`**。后端用非贪婪正则剥外层 div,如果内层有 `</div>` 会被错切。要嵌套的话用 `<section>` 或 `<span>`。
 
 ### ⚠️ 后台保活（关键）
 
